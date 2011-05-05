@@ -8,12 +8,12 @@ from __future__ import print_function
 from optparse import OptionParser
 import numpy as np
 from s2r.lahman58 import Master, Pitching, Batting, Fielding, Appearances
+from s2r.converter import Basic
 
 
 __version__ = '20110428'
 
 
-class NoDataError(Exception): pass
 class NoPlayerFoundError(Exception): pass
 class NoPlayingTimeError(Exception): pass
 
@@ -385,18 +385,9 @@ class PlayerData(object):
 
         # update attribute ratings
         self.attr['PO1'], self.attr['PO2'] = self.find_positions()
-        self.attr['K9'] = self.rate_k9()
-        self.attr['BB9'] = self.rate_bb9()
-        self.attr['H9'] = self.rate_h9()
 
-        self.attr['VIS'] = self.rate_platevision()
-        self.attr['DIS'] = self.rate_platediscipline()
-        self.attr['RCT'] = self.rate_contact(self.attr['DIS'])
-        self.attr['LCT'] = self.rate_contact(self.attr['DIS'])
-        self.attr['RPW'] = self.rate_power()
-        self.attr['LPW'] = self.rate_power()
-        self.attr['BAB'] = self.rate_brability()
-        self.attr['BAG'] = self.rate_braggressiveness()
+        c = Basic(self.attr, self.statstotal)
+        self.attr = c.rate()
 
     def find_positions(self):
         posstr = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
@@ -440,84 +431,6 @@ class PlayerData(object):
             return (posstr[pos1], 'C/3B')
         return (posstr[pos1], posstr[idxsorted[1]])
 
-    def rate_k9(self):
-        s = self.statstotal['pitching']
-        so, out = s['SO'], s['IPOuts']
-        if not (out > 0):
-            return -1
-        k9 = 27. * so / out
-        r = int(round((k9 + 0.6519) / 0.1139))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_bb9(self):
-        s = self.statstotal['pitching']
-        bb, tbf = s['BB'], s['BFP']
-        if not (tbf > 0):
-            return -1
-        rr = bb / tbf
-        r = int(round((rr - 0.1309) / -0.0007))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_h9(self):
-        s = self.statstotal['pitching']
-        h, ab  = s['H'], s['BFP'] - s['BB'] -s['HBP'] -s['SF'] -s['SH']
-        if not (ab > 0):
-            return -1
-        ba = h / ab
-        r = int(round((ba - 0.3477) / -0.0014))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_contact(self, displ):
-        s = self.statstotal['batting']
-        h, ab = s['H'], s['AB']
-        if not (ab > 0):
-            return -1
-        r = int(round(((h / ab) - 0.1896) / (8.467e-4 + 5.488e-6 * displ)))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_power(self):
-        s = self.statstotal['batting']
-        hr, ab = s['HR'], s['AB']
-        if not (ab > 0):
-            return -1
-        r = int(round(550. * (hr / ab) / 0.5844 + 25.))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_platevision(self):
-        s = self.statstotal['batting']
-        so = s['SO']
-        ab = s['AB']
-        if not (ab > 0):
-            return -1
-        r = int(round(164.7 - 558.8 * (so / ab)))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_platediscipline(self):
-        s = self.statstotal['batting']
-        bb = s['BB']
-        pa = s['AB'] + s['BB'] + s['HBP'] + s['SH'] + s['SF']
-        if not (pa > 0):
-            return -1
-        r = int(round(771.1 * (bb / pa)))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_brability(self):
-        s = self.statstotal['batting']
-        sb, cs = s['SB'], s['CS']
-        if not (sb + cs > 0):
-            return -1
-        sbp = 1. * sb / (sb + cs)
-        r = int(round((sbp * 100 - 52.3) / 0.3525))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
-
-    def rate_braggressiveness(self):
-        s = self.statstotal['batting']
-        sb, cs, h, bb, hbp = s['SB'], s['CS'], s['H'], s['BB'], s['HBP']
-        if not (h + bb + hbp > 0):
-            return -1
-        sbr = 1. * (sb + cs) / (h + bb + hbp)
-        r = int(round((sbr + .02169) / 0.003397))
-        return r if 0 <= r <= 99 else (0 if r < 0 else 99)
 
     # ordered for generating csv output
     attrnames = ['FNM', 'LNM', 'HT', 'WT', 'PO1', 'PO2', 'T', 'B', 'USB',
