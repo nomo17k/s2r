@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 #from __future__ import unicode_literals
+import numpy as np
 
 
 def keeprange(fn):
@@ -46,8 +47,13 @@ class Converter(object):
         a['LCT'] = self.rate_contact()
         a['RPW'] = self.rate_power()
         a['LPW'] = self.rate_power()
+        a['BNT'] = self.rate_buntingability()
+        a['DBN'] = self.rate_dragbunting()
         a['VIS'] = self.rate_platevision()
         a['DIS'] = self.rate_platediscipline()
+        a['CLU'] = self.rate_clutch()
+        a['DUR'] = self.rate_durability()
+        a['SPD'] = self.rate_speed()
         a['BAB'] = self.rate_brability()
         a['BAG'] = self.rate_braggressiveness()
         return a
@@ -57,8 +63,13 @@ class Converter(object):
     def rate_h9(self, *args, **kwargs): return -1
     def rate_contact(self, *args, **kwargs): return -1
     def rate_power(self, *args, **kwargs): return -1
+    def rate_buntingability(self, *args, **kwargs): return -1
+    def rate_dragbunting(self, *args, **kwargs): return -1
     def rate_platevision(self, *args, **kwargs): return -1
     def rate_platediscipline(self, *args, **kwargs): return -1
+    def rate_clutch(self, *args, **kwargs): return -1
+    def rate_durability(self, *args, **kwargs): return -1
+    def rate_speed(self, *args, **kwargs): return -1
     def rate_brability(self, *args, **kwargs): return -1
     def rate_braggressiveness(self, *args, **kwargs): return -1
 
@@ -71,6 +82,7 @@ class Basic(Converter):
         a['LCT'] = self.rate_contact(bat=a['B'], vs='L', displ=a['DIS'])
         a['RPW'] = self.rate_power(bat=a['B'], vs='R')
         a['LPW'] = self.rate_power(bat=a['B'], vs='L')
+        a['SPD'] = self.rate_speed(pos=a['PO1'])
         return a
 
     @keeprange
@@ -117,16 +129,16 @@ class Basic(Converter):
         spltp = {'R': 0.0420, 'L': 0.0458, 'S': 0.0640}[bat]
         pltp += spltp * psig if bat == 'R' else -spltp * psig
         
-        ba = (h / ab * (1 + r * (1 - pltp)) / (1 + r) if vs == 'R'
-              else (h / ab * (r + 1 + pltp)) / (1 + r))
-        print(('ba=',ba))
-        return ((1. * ba) - 0.1896) / (8.467e-4 + 5.488e-6 * displ)
+        ba = (1.*h / ab * (1 + r * (1 - pltp)) / (1 + r) if vs == 'R'
+              else (1.*h / ab * (r + 1 + pltp)) / (1 + r))
+        return ((1. * ba - 0.1838 - 1.965e-4 * displ)
+                / (1.034e-3 + 1.508e-6 * displ))
 
     @keeprange
     def rate_power(self, bat='R', vs='R', psig=0., *args, **kwargs):
         s = self.stats['batting']
-        h, hr, ab = s['H'], s['HR'], s['AB']
-        if not (ab > 0 and h > 0):
+        h, hr = s['H'], s['HR'] 
+        if not (h > 0):
             return -1
 
         # generic ratio for (AB vs LHP) / (AB vs RHP)
@@ -140,29 +152,92 @@ class Basic(Converter):
         spltp = {'R': 0.0420, 'L': 0.0458, 'S': 0.0640}[bat]
         pltp += spltp * psig if bat == 'R' else -spltp * psig
 
-        hpab = (hr / ab * (1 + r * (1 - pltp)) / (1 + r) if vs == 'R'
-              else (hr / ab * (r + 1 + pltp)) / (1 + r))
-        print(('pow=', hpab * ab / h))
+        hrph = (1.*hr / h * (1 + r * (1 - pltp)) / (1 + r) if vs == 'R'
+                else (1.*hr / h * (r + 1 + pltp)) / (1 + r))
+        return (hrph + 0.06375) / 3.350e-3
 
-        return 550. * (1. * hpab) / 0.5844 + 25.
+    @keeprange
+    def rate_buntingability(self, *args, **kwargs):
+        s = self.stats['batting']
+        sh, pa = s['SH'], s['AB'] + s['BB'] + s['SH'] + s['SF'] + s['HBP']
+        shpa = 1. * sh / pa / 12. if self.attr['PO1'] in ('SP','RP','CP') else 1.*sh/pa
+        if not (pa > 0):
+            return -1
+        return 93. * (1. - np.exp(-80. * (shpa)))
+
+    @keeprange
+    def rate_dragbunting(self, *args, **kwargs):
+        s = self.stats['batting']
+        sh, pa = s['SH'], s['AB'] + s['BB'] + s['SH'] + s['SF'] + s['HBP']
+        if not (pa > 0):
+            return -1
+        return 96. * (1. - np.exp(-60. * ((1. * sh / pa) - 0.002)))
 
     @keeprange
     def rate_platevision(self, *args, **kwargs):
         s = self.stats['batting']
-        so = s['SO']
-        ab = s['AB']
+        so, ab = s['SO'], s['AB']
         if not (ab > 0):
             return -1
-        return 164.7 - 558.8 * (so / ab)
+        return - ((1. * so / ab) - 0.2884) / 1.6732e-3
 
     @keeprange
     def rate_platediscipline(self, *args, **kwargs):
         s = self.stats['batting']
-        bb = s['BB']
-        pa = s['AB'] + s['BB'] + s['HBP'] + s['SH'] + s['SF']
+        bb, pa = s['BB'], s['AB'] + s['BB'] + s['HBP'] + s['SH'] + s['SF']
         if not (pa > 0):
             return -1
         return (771.1 * (bb / pa))
+
+    @keeprange
+    def rate_clutch(self, *args, **kwargs):
+        return 70.
+
+    @keeprange
+    def rate_durability(self, *args, **kwargs):
+        s = self.stats['fielding']
+        pf = (s['InnOuts'] / 3.) / (162. * 9. * s['YRS'])
+        return ((pf + 1.97) / 0.03 if pf >= 0.88
+                else ((pf - 0.5679) / 3.286e-3 if 0.65 <= pf < 0.88
+                      else 66.))
+
+    @keeprange
+    def rate_speed(self, pos=None, *args, **kwargs):
+        s = self.stats['batting']
+        sb, cs = 1.*s['SB'], 1.*s['CS']
+        h, h2, h3, hr = 1.*s['H'], 1.*s['2B'], 1.*s['3B'], 1.*s['HR']
+        ab, so, bb = 1.*s['AB'], 1.*s['SO'], 1.*s['BB']
+        r, hbp, gidp = 1.*s['R'], 1.*s['HBP'], 1.*s['GIDP']
+        s = self.stats['fielding']
+        po, a, g = 1.*s['PO'], 1.*s['A'], 1.*s['G']
+
+        f1 = (sb + 3.0) / (sb + cs + 7.0)
+        f1 = (f1 - 0.4) * 20.
+        f2 = (sb + cs) / ((h - h2 - h3 - hr) + bb + hbp)
+        f2 = np.sqrt(f2) / 0.07
+        f3 = h3 / (ab - hr - so)
+        f3 = f3 / 0.0016
+        f4 = (r - hr) / (h + bb + hbp - hr)
+        f4 = (f4 - 0.1) * 25.
+        f5 = gidp / (ab - hr - so)
+        f5 = (0.063 - f5) / 0.007
+        f6 = {None: 0,
+              'SP': 0., 'RP': 0., 'CP': 0.,
+              'C': 1.,
+              '1B': 2.,
+              '2B': (((po + a) / g) / 4.8) * 6.,
+              '3B': (((po + a) / g) / 2.65) * 4.,
+              'SS': (((po + a) / g) / 4.6) * 7.,
+              'LF': (((po + a) / g) / 2.0) * 6.,
+              'CF': (((po + a) / g) / 2.0) * 6.,
+              'RF': (((po + a) / g) / 2.0) * 6.}[pos]
+
+        ss = np.array([float(f1), float(f2), float(f3), float(f4), float(f5),
+                       float(f6)])
+        ss[ss > 10] = 10.
+        ss[ss < 0] = 0.
+        ss = np.mean(ss, axis=0)
+        return ((ss - 1.531) / 1.498e-3)**(1./1.822) if ss > 1.531 else 0.
 
     @keeprange
     def rate_brability(self, *args, **kwargs):

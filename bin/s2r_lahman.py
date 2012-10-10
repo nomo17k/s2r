@@ -88,7 +88,7 @@ def showstatspitching(pd):
                  ))
 
     print('-' * len(hdr))
-    print_total(tot, 'Total')
+    print_total(tot, '%d Season Total' % o['YRS'])
     print_total(n162, '162 Game Ave.')
 
 
@@ -98,21 +98,30 @@ def showstatsbatting(pd):
     print("BATTING")
     print()
     hdr = ('  YR AGE  TM LG'
-           '    G    AB    R    H  2B  3B  HR   RBI'
-           ' SB  CS   BB   SO'
+           '    G    AB    R    H  2B  3B  HR  RBI'
+           '  SB  CS   BB   SO'
            '   BA  OBP  SLG  OPS')
     fmt = ('%4s %3.0f %3s %2s'
            ' %4.0f %5.0f %4.0f %4.0f %3.0f %3.0f %3.0f %4.0f'
            ' %3.0f %3.0f %4.0f %4.0f'
            ' %4s %4s %4s %4s')
     
-    def fmtba(numerator, denominator):
-        ba = 0. if denominator == 0 else 1. * numerator / denominator
-        return ('%.3f' % ba)[1:] if ba < 1 else ('%.3f' % ba)[:4]
+    def fmtrate(r):
+        return (' ---' if r is None
+                else (('%.3f' % r)[1:] if r < 1 else ('%.3f' % r)[:4]))
+
+    def rate(x, y):
+        return 1. * x / y if abs(y) > 0 else None
 
     print(hdr)
     print('-' * len(hdr))
     for o in pd.batting:
+        ba = rate(o['H'], o['AB'])
+        obp = rate(o['H'] + o['BB'] + o['HBP'],
+                   o['AB'] + o['BB'] + o['HBP'] + o['SF'])
+        slg = rate(o['H'] + 2. * o['2B'] + 3. * o['3B'] + 4. * o['HR'],
+                   o['AB'])
+        ops = None if None in (obp, slg) else obp + slg
         print(fmt
               % (o['yearID'], pd.age(o['yearID']), o['teamID'], o['lgID'],
                  o['G'],
@@ -127,10 +136,10 @@ def showstatsbatting(pd):
                  o['CS'],
                  o['BB'],
                  o['SO'],
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB'])))
+                 fmtrate(ba),
+                 fmtrate(obp),
+                 fmtrate(slg),
+                 fmtrate(ops)))
 
     names = [n for n in pd.batting.dtype.names[5:]]
     tot = compute_total(pd.batting, names)
@@ -141,6 +150,12 @@ def showstatsbatting(pd):
     
     def print_total(stats, label):
         o = stats
+        ba = rate(o['H'], o['AB'])
+        obp = rate(o['H'] + o['BB'] + o['HBP'],
+                   o['AB'] + o['BB'] + o['HBP'] + o['SF'])
+        slg = rate(o['H'] + 2. * o['2B'] + 3. * o['3B'] + 4. * o['HR'],
+                   o['AB'])
+        ops = None if None in (obp, slg) else obp + slg
         print(('%15s' + fmt[17:])
               % (label,
                  o['G'],
@@ -155,13 +170,13 @@ def showstatsbatting(pd):
                  o['CS'],
                  o['BB'],
                  o['SO'],
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB']),
-                 fmtba(o['H'], o['AB'])))
+                 fmtrate(ba),
+                 fmtrate(obp),
+                 fmtrate(slg),
+                 fmtrate(ops)))
 
     print('-' * len(hdr))
-    print_total(tot, 'Total')
+    print_total(tot, '%d Season Total' % o['YRS'])
     print_total(n162, '162 Game Ave.')
 
 
@@ -176,10 +191,6 @@ def showstatsfielding(pd):
     fmt = ('%4s %3.0f %3s %2s'
            ' %3s %4.0f %4.0f %7s %5.0f %4.0f %3.0f %4.0f'
            ' %3.0f %3.0f %4.0f %4.0f')
-    
-    def fmtba(numerator, denominator):
-        ba = 0. if denominator == 0 else 1. * numerator / denominator
-        return ('%.3f' % ba)[1:] if ba < 1 else ('%.3f' % ba)[:4]
 
     print(hdr)
     print('-' * len(hdr))
@@ -224,7 +235,7 @@ def showstatsfielding(pd):
 
 
     print('-' * len(hdr))
-    print_total(tot, 'Total')
+    print_total(tot, '%d Season Total' % o['YRS'])
     print_total(n162, '162 Game Ave.')
 
 
@@ -289,16 +300,19 @@ def showstatsappearances(pd):
                  o['G_dh']))
 
     print('-' * len(hdr))
-    print_total(tot, 'Total')
+    print_total(tot, '%d Season Total' % o['YRS'])
     print_total(n162, '162 Game Ave.')
 
 
 def compute_total(stats, columns, numtype='i'):
     if stats.size == 0:
         return stats
-    dtype = [(str(c), numtype) for c in columns]
+    # compute the number of seasons played
+    nseason = np.unique(stats['yearID']).size
+    
+    dtype = [(str(c), numtype) for c in columns] + [('YRS', 'i')]
     tot = np.array([list(o) for o in stats[columns]]).sum(axis=0)
-    tot = np.array([tuple(tot)], dtype=dtype)
+    tot = np.array([tuple(tot) + (nseason,)], dtype=dtype)
     return tot
 
 
@@ -313,13 +327,12 @@ class PlayerData(object):
         m = Master().data
         m = m[m['playerID'] == pid]
         if m.size == 0:
-            raise NoPlayerFoundError("No player found with the given ID: %s"
-                                     % pid)
+            s = ("No player found with the given ID: %s" % pid)
+            raise NoPlayerFoundError(s)
         m = m[0]
         self.master = m
         p = Pitching().data
-        p = p[p['playerID'] == pid]
-        self.pitching = p #if p.size else None
+        self.pitching = p[p['playerID'] == pid]
         b = Batting().data
         self.batting = b[b['playerID'] == pid]
         f = Fielding().data
@@ -509,7 +522,7 @@ def showfulloutput(pd):
           % attr)
 
 
-def search(searchword, maxplayer=20):
+def search(searchword, simple=False, maxplayer=20):
     """
     Search player name in the database and list player IDs found.
     """
@@ -521,6 +534,14 @@ def search(searchword, maxplayer=20):
         nl = (' '.join([o['nameFirst'], o['nameLast']])).lower()
         if nl.find(searchword) >= 0:
             idxs.append(o['playerID'])
+
+    if simple:
+        ps = []
+        for idx in idxs:
+            p = m[m['playerID'] == idx][0]
+            ps.append(p['playerID'])
+        print(' '.join(ps))
+        return
 
     if len(idxs) == 0:
         print('No players found.')
@@ -556,6 +577,9 @@ def main(pids, opts):
             pd = PlayerData(pid)
         except NoPlayerFoundError:
             print("%s not found in database. Skipping." % pid)
+            continue
+        except:
+            print("Error reading %s. Skipping." % pid)
             continue
         if len(opts.year):
             try:
@@ -596,16 +620,21 @@ if __name__ == '__main__':
                  help='show stats for a player')
     p.add_option('-y', '--year', nargs=2, action='append', default=[],
                  help='year to use and weight given')
+    p.add_option('--simple', action='store_true', default=False,
+                 help='simplified output')
 
     opts, args = p.parse_args()
 
     if opts.search:
         if len(opts.search) < 2:
             p.error("Search word must be two chars or more.")
-        search(opts.search)
+        search(opts.search, simple=opts.simple)
     else:
         if len(args) == 0:
-            p.error("Need a player ID.")
+            import sys
+            args = sys.stdin.read().split()
+            if len(args) == 0:
+                p.error("Need a player ID.")
         pids = args
         main(pids, opts)
         

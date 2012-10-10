@@ -9,6 +9,9 @@ from StringIO import StringIO
 import numpy as np
 
 
+DIRLAHMAN = '/home/taro/src/s2r/lahman58'
+
+
 class LahmanReader(object):
 
     dtype = []
@@ -94,7 +97,7 @@ class Master(LahmanReader):
              ('holtzID', 'a9'),
              ('bbrefID', 'a9')]
 
-    def __init__(self, filename='../lahman58/Master.csv'):
+    def __init__(self, filename='%s/Master.csv' % DIRLAHMAN):
         super(Master, self).__init__(filename)
 
 
@@ -125,7 +128,7 @@ class Batting(LahmanReader):
              ("GIDP", 'i'),
              ("G_old", 'i')]
 
-    def __init__(self, filename='../lahman58/Batting.csv'):
+    def __init__(self, filename='%s/Batting.csv' % DIRLAHMAN):
         super(Batting, self).__init__(filename)
 
 
@@ -162,7 +165,7 @@ class Pitching(LahmanReader):
              ("SF", 'i'),
              ("GIDP", 'i')]
 
-    def __init__(self, filename='../lahman58/Pitching.csv'):
+    def __init__(self, filename='%s/Pitching.csv' % DIRLAHMAN):
         super(Pitching, self).__init__(filename)
 
 
@@ -187,8 +190,15 @@ class Fielding(LahmanReader):
              ("CS", 'i'),
              ("ZR", 'f')]
 
-    def __init__(self, filename='../lahman58/Fielding.csv'):
+    def __init__(self, filename='%s/Fielding.csv' % DIRLAHMAN):
         super(Fielding, self).__init__(filename)
+        
+        # removing pos = 'OF' data, as they are duplicates of
+        # individual outfield positions
+        self.data = self.data[self.data['Pos'] != 'OF']
+
+        # removing pos = 'DH' data, as they have no fielding stats
+        self.data = self.data[self.data['Pos'] != 'DH']
 
 
 class Appearances(LahmanReader):
@@ -214,7 +224,7 @@ class Appearances(LahmanReader):
              ("G_of", 'i'),
              ("G_dh", 'i')]
 
-    def __init__(self, filename='../lahman58/Appearances.csv'):
+    def __init__(self, filename='%s/Appearances.csv' % DIRLAHMAN):
         super(Appearances, self).__init__(filename)
 
 
